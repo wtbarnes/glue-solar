@@ -1,9 +1,9 @@
 from pkg_resources import get_distribution, DistributionNotFound
 from sunpy.visualization.colormaps import cmlist
 from glue.viewers.image.qt import ImageViewer
-from glue_solar.pixel_extraction import PixelExtractionTool  # noqa
+from glue_solar.pixel_extraction import *  # noqa
 from glue.config import colormaps
-from glue_solar.instruments import *
+#from glue_solar.instruments import *
 from glue_solar.core import *
 
 try:
@@ -14,5 +14,6 @@ except DistributionNotFound:
 
 def setup():
     ImageViewer.tools.append('solar:pixel_extraction')
-    for name, ctable in sorted(cmlist.items()):
+    ImageViewer.tools.append('solar:pixel_selection')
+    for _, ctable in sorted(cmlist.items()):
         colormaps.add(ctable.name, ctable)
