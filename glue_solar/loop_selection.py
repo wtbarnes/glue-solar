@@ -73,17 +73,36 @@ class LoopSelectionTool(ToolbarModeBase):
         # FIXME: find a better way of selecting the image data. This is fragile! and not guaranteed to select 
         # the right component!!!
         loop_straight = dc[dc.components[-1]][straight_indices[:,:,1], straight_indices[:,:,0]]
-        d_straight = Data(image=loop_straight, coords=gwcs, label='loop_straight')
+        d_straight = Data(image=loop_straight,
+                          coords=gwcs,
+                          label='loop_straight')
         self.viewer.session.data_collection.append(d_straight)
+        # Interpolated loop points
+        d_inner = Data(x=straight_indices[:, 0, 0],
+                       y=straight_indices[:, 0, 1],
+                       label='loop_points_inner')
+        d_outer = Data(x=straight_indices[:, -1, 0],
+                       y=straight_indices[:, -1, 1],
+                       label='loop_points_outer')
+        self.viewer.session.data_collection.append(d_inner)
+        self.viewer.session.data_collection.append(d_outer)
         # Create links
         link_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d.id['x'])
         link_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d.id['y'])
         link_Tx = ComponentLink([dc.id['Hpln']], d.id['Tx'])
         link_Ty = ComponentLink([dc.id['Hplt']], d.id['Ty'])
+        link_inner_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d_inner.id['x'])
+        link_inner_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d_inner.id['y'])
+        link_outer_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d_outer.id['x'])
+        link_outer_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d_outer.id['y'])
         self.viewer.session.data_collection.add_link(link_x)
         self.viewer.session.data_collection.add_link(link_y)
         self.viewer.session.data_collection.add_link(link_Tx)
         self.viewer.session.data_collection.add_link(link_Ty)
+        self.viewer.session.data_collection.add_link(link_inner_x)
+        self.viewer.session.data_collection.add_link(link_inner_y)
+        self.viewer.session.data_collection.add_link(link_outer_x)
+        self.viewer.session.data_collection.add_link(link_outer_y)
         # Cleanup
         self._selected_points.set_visible(False)
         self._interpolated_points.set_visible(False)
