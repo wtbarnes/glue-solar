@@ -25,7 +25,7 @@ class LoopSelectionTool(ToolbarModeBase):
     icon = "glue_crosshair"
     tool_id = 'solar:loop_selection'
     action_text = 'Pixel'
-    tool_tip = 'Extract a single pixel based on mouse location'
+    tool_tip = 'Trace a loop spine to create a derived "straightened" loop dataset'
     status_tip = 'CLICK to select points in your loop'
 
     _pressed = False
@@ -58,6 +58,8 @@ class LoopSelectionTool(ToolbarModeBase):
         self._clicked_points = {'x': [], 'y': []}
 
     def deactivate(self):
+        if len(self._clicked_points['x']) == 0:
+            return 
         # Create coordinate dataset
         x_pix = copy.deepcopy(self._clicked_points['x'])
         y_pix = copy.deepcopy(self._clicked_points['y'])
@@ -84,25 +86,28 @@ class LoopSelectionTool(ToolbarModeBase):
         d_outer = Data(x=straight_indices[:, -1, 0],
                        y=straight_indices[:, -1, 1],
                        label='loop_points_outer')
+        i_mid = int((straight_indices.shape[1]-1)/2)
+        d_mid = Data(x=straight_indices[:, i_mid, 0],
+                     y=straight_indices[:, i_mid, 1],
+                     label='loop_points_mid')
         self.viewer.session.data_collection.append(d_inner)
         self.viewer.session.data_collection.append(d_outer)
+        self.viewer.session.data_collection.append(d_mid)
         # Create links
-        link_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d.id['x'])
-        link_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d.id['y'])
-        link_Tx = ComponentLink([dc.id['Hpln']], d.id['Tx'])
-        link_Ty = ComponentLink([dc.id['Hplt']], d.id['Ty'])
-        link_inner_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d_inner.id['x'])
-        link_inner_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d_inner.id['y'])
-        link_outer_x = ComponentLink([dc.id['Pixel Axis 1 [x]']], d_outer.id['x'])
-        link_outer_y = ComponentLink([dc.id['Pixel Axis 0 [y]']], d_outer.id['y'])
-        self.viewer.session.data_collection.add_link(link_x)
-        self.viewer.session.data_collection.add_link(link_y)
-        self.viewer.session.data_collection.add_link(link_Tx)
-        self.viewer.session.data_collection.add_link(link_Ty)
-        self.viewer.session.data_collection.add_link(link_inner_x)
-        self.viewer.session.data_collection.add_link(link_inner_y)
-        self.viewer.session.data_collection.add_link(link_outer_x)
-        self.viewer.session.data_collection.add_link(link_outer_y)
+        links = [
+            ComponentLink([dc.id['Pixel Axis 1 [x]']], d.id['x']),
+            ComponentLink([dc.id['Pixel Axis 0 [y]']], d.id['y']),
+            ComponentLink([dc.id['Hpln']], d.id['Tx']),
+            ComponentLink([dc.id['Hplt']], d.id['Ty']),
+            ComponentLink([dc.id['Pixel Axis 1 [x]']], d_inner.id['x']),
+            ComponentLink([dc.id['Pixel Axis 0 [y]']], d_inner.id['y']),
+            ComponentLink([dc.id['Pixel Axis 1 [x]']], d_outer.id['x']),
+            ComponentLink([dc.id['Pixel Axis 0 [y]']], d_outer.id['y']),
+            ComponentLink([dc.id['Pixel Axis 1 [x]']], d_mid.id['x']),
+            ComponentLink([dc.id['Pixel Axis 0 [y]']], d_mid.id['y']),
+        ]
+        for l in links:
+            self.viewer.session.data_collection.add_link(l)
         # Cleanup
         self._selected_points.set_visible(False)
         self._interpolated_points.set_visible(False)
@@ -120,12 +125,15 @@ class LoopSelectionTool(ToolbarModeBase):
 
         self._selected_points.set_data(self._clicked_points['x'], self._clicked_points['y'])
         self._selected_points.set_visible(True)
-        # Cannot do the interpolation with less than 3 points
+        # Cannot do the interpolation with less than 2 points
         n_points = len(self._clicked_points['x'])
         if n_points > 1:
             # Do at most a 3rd-order spline fit
             x_interp, y_interp = self._interpolate_pixel_coords(
-                self._clicked_points['x'], self._clicked_points['y'], splprep_kwargs={'k': min(n_points-1, 3)})
+                self._clicked_points['x'],
+                self._clicked_points['y'],
+                splprep_kwargs={'k': min(n_points-1, 3)},
+            )
             self._interpolated_points.set_data(x_interp, y_interp)
             self._interpolated_points.set_visible(True)
         self.viewer.axes.figure.canvas.draw()
@@ -134,23 +142,6 @@ class LoopSelectionTool(ToolbarModeBase):
         coord = self.viewer.session.data_collection[0].coords.pixel_to_world(x, y)
         coord_interp = interpolate_hpc_coord(coord, self._n_interp, **kwargs)
         return self.viewer.session.data_collection[0].coords.world_to_pixel(coord_interp)
-
-
-def straight_cut(p0, slope, width, n=100):
-    dx = width / np.sqrt(1 + slope**2)
-    x = np.linspace(p0.Tx-dx/2, p0.Tx+dx/2, n)
-    b = p0.Ty - slope * p0.Tx
-    y = slope * x + b
-    return SkyCoord(Tx=x, Ty=y, frame=p0.frame)
-
-
-def cut_from_slice(sl, p0, slope, width):
-    cut = straight_cut(p0, slope, width, n=1000)
-    cut_px_x, cut_px_y = sl.wcs.world_to_pixel(cut)
-    n = int(np.ceil(np.sqrt((cut_px_x[-1] - cut_px_x[0])**2 + (cut_px_y[-1] - cut_px_y[0])**2)))
-    cut = straight_cut(p0, slope, width, n=n)
-    cut_px_x, cut_px_y = sl.wcs.world_to_pixel(cut)
-    return cut, sl.data[tuple([cut_px_y.astype(int), cut_px_x.astype(int)])]
 
 
 def cross_section_endpoints(p0, direction, length, from_inner):
@@ -280,7 +271,9 @@ def straight_loop_indices(coord, width, image_wcs, from_inner=False):
     # Interpolate each perpendicular cut to make sure they have an equal number
     # of pixels
     n_xs = max([l.shape[0] for l in indices])
-    if n_xs%2 != 0:
+    if n_xs%2 == 0:
+        # Always make this odd so that the "spine" of the loop corresponds to
+        # a particular index
         n_xs += 1
     s = np.linspace(0, 1, n_xs)
     indices_interp = []
@@ -295,7 +288,7 @@ def straight_loop_indices(coord, width, image_wcs, from_inner=False):
             indices_interp.append(np.array([px, py]).T)
     indices_interp = np.round(np.array(indices_interp)).astype(int)
 
-    i_mid = int(n_xs/2)
+    i_mid = int((n_xs - 1)/2)
     loop_coord = image_wcs.pixel_to_world(indices_interp[:, i_mid, 0],
                                           indices_interp[:, i_mid, 1])
     data = u.Quantity([loop_coord.Tx, loop_coord.Ty]).to('arcsec').value
